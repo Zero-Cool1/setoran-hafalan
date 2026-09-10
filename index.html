@@ -5,14 +5,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="theme-color" content="#15803d">
 <title>Sistem Tahfidz</title>
-<script src="https://cdn.tailwindcss.com"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
   html, body { height: 100%; margin: 0; padding: 0; }
   body { font-family: 'Inter', sans-serif; background-color: #e5e7eb; }
   ::-webkit-scrollbar { width: 0px; background: transparent; }
@@ -29,21 +32,22 @@
 // 1. KONFIG & STATE
 // ==========================================
 const IS_PREVIEW = false;
-const GAS_URL = "https://script.google.com/macros/s/AKfycbz5R2adGG3fDBhNVKtbPvcK0NZwLYTOqhsUXm4SIHyqVRrmGNfGvzEb4ayD6lI5qJU8/exec"; // GANTI!
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyJqtx7Fcl4bJSDVompbvBXFJMHj2Ep8NtWp_oLBLa7Gex9JJAzwXn-OEA8sXDgGntO/exec"; // <-- GANTI!
 
 let state = {
   user: null, activeTab: 'beranda', activeTabOrtu: 'beranda',
-  ortuSubTab: 'murojaah', // murojaah | sholat
+  ortuSubTab: 'murojaah',
+  selectedSurahs: [],
   santri: [], setoran: [], kelas: [], ustadz: [], mutabaah: [], murojaah: [], absensi: [],
   santri_info: null, pengumuman: '',
   pengaturan: { nama_lembaga:'Lembaga Pendidikan Al-Quran', nama_pimpinan:'Mudir TPQ', logo:'', link_wa:'', alamat:'', telepon:'', email:'', website:'' },
-  isLoading: false
+  isLoading: false, riwayatFilter: 'setoran'
 };
 
 const DAFTAR_SURAH = ["Al-Fatihah","Al-Baqarah","Ali 'Imran","An-Nisa'","Al-Ma'idah","Al-An'am","Al-A'raf","Al-Anfal","At-Taubah","Yunus","Hud","Yusuf","Ar-Ra'd","Ibrahim","Al-Hijr","An-Nahl","Al-Isra'","Al-Kahf","Maryam","Ta Ha","Al-Anbiya'","Al-Hajj","Al-Mu'minun","An-Nur","Al-Furqan","Asy-Syu'ara'","An-Naml","Al-Qasas","Al-'Ankabut","Ar-Rum","Luqman","As-Sajdah","Al-Ahzab","Saba'","Fatir","Ya Sin","As-Saffat","Sad","Az-Zumar","Ghafir","Fussilat","Asy-Syura","Az-Zukhruf","Ad-Dukhan","Al-Jasiyah","Al-Ahqaf","Muhammad","Al-Fath","Al-Hujurat","Qaf","Az-Zariyat","At-Tur","An-Najm","Al-Qamar","Ar-Rahman","Al-Waqi'ah","Al-Hadid","Al-Mujadilah","Al-Hasyr","Al-Mumtahanah","As-Saff","Al-Jumu'ah","Al-Munafiqun","At-Tagabun","At-Talaq","At-Tahrim","Al-Mulk","Al-Qalam","Al-Haqqah","Al-Ma'arij","Nuh","Al-Jinn","Al-Muzzammil","Al-Muddassir","Al-Qiyamah","Al-Insan","Al-Mursalat","An-Naba'","An-Nazi'at","'Abasa","At-Takwir","Al-Infitar","Al-Mutaffifin","Al-Insyiqaq","Al-Buruj","At-Tariq","Al-A'la","Al-Gasyiyah","Al-Fajr","Al-Balad","Asy-Syams","Al-Lail","Ad-Duha","Asy-Syarh","At-Tin","Al-'Alaq","Al-Qadr","Al-Bayyinah","Az-Zalzalah","Al-'Adiyat","Al-Qari'ah","At-Takasur","Al-'Asr","Al-Humazah","Al-Fil","Quraisy","Al-Ma'un","Al-Kausar","Al-Kafirun","An-Nasr","Al-Lahab","Al-Ikhlas","Al-Falaq","An-Nas"];
 
 // ==========================================
-// 2. UTILITY & API
+// 2. UTILITY & API (RETRY)
 // ==========================================
 window.generateRandomPass = function() {
   const c = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -51,16 +55,29 @@ window.generateRandomPass = function() {
   return p;
 };
 
-window.apiCall = async function(action, payload) {
-  try {
-    const r = await fetch(GAS_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action, payload }),
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      redirect: 'follow'
-    });
-    return await r.json();
-  } catch (e) { return { success: false, message: 'Gagal terhubung: ' + e.message }; }
+window.apiCall = async function(action, payload, retries = 2) {
+  const body = JSON.stringify({ action, payload });
+  let lastError = '';
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const r = await fetch(GAS_URL, {
+        method: 'POST', body: body,
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        redirect: 'follow', signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const text = await r.text();
+      try { return JSON.parse(text); }
+      catch { throw new Error('Response bukan JSON. Cek deployment GAS.'); }
+    } catch (e) {
+      lastError = e.message;
+      if (attempt < retries) await new Promise(res => setTimeout(res, 800 * (attempt + 1)));
+    }
+  }
+  return { success: false, message: 'Gagal terhubung ke database: ' + lastError };
 };
 
 window.copyToClipboard = function(text) {
@@ -91,7 +108,6 @@ window.renderApp = function() {
   else if (state.user.role === 'Ustadz') {
     root.innerHTML = window.renderUstadzDashboard();
     if (state.activeTab === 'input-setoran') window.populateSantriSelect();
-    if (state.activeTab === 'absensi') window.populateAbsensiView();
   } else if (state.user.role === 'OrangTua') root.innerHTML = window.renderOrtuDashboard();
 };
 
@@ -146,7 +162,7 @@ window.renderLogin = function() {
 };
 
 // ==========================================
-// 5. USTADZ VIEWS
+// 5. USTADZ DASHBOARD
 // ==========================================
 window.renderUstadzDashboard = function() {
   const tabs = [
@@ -353,7 +369,7 @@ window.markAllAbsen = function(status) {
   document.querySelectorAll('.abs-row').forEach(row => {
     const btns = row.querySelectorAll('.abs-btn');
     btns.forEach(b => {
-      const st = b.dataset.status || b.innerText.trim();
+      const st = b.innerText.trim();
       const c = st === 'Hadir' ? 'green' : st === 'Sakit' ? 'yellow' : st === 'Izin' ? 'blue' : 'red';
       if (st === status) {
         b.className = `abs-btn flex-1 text-[10px] font-bold py-1.5 rounded border bg-${c}-500 text-white border-${c}-500`;
@@ -381,7 +397,7 @@ window.pickStatus = function(btn, status) {
   });
 };
 
-window.populateAbsensiView = function() { /* nothing extra */ };
+window.populateAbsensiView = function() {};
 
 window.submitAbsensiMassal = async function() {
   const tanggal = document.getElementById('abs-tanggal').value;
@@ -606,22 +622,135 @@ window.renderOrtuAmalan = function() {
     <button onclick="window.switchOrtuSub('murojaah')" class="flex-1 py-2 text-xs font-bold rounded-lg ${sub === 'murojaah' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}"><i class="fas fa-book-open"></i> Muroja'ah Mandiri</button>
     <button onclick="window.switchOrtuSub('sholat')" class="flex-1 py-2 text-xs font-bold rounded-lg ${sub === 'sholat' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}"><i class="fas fa-mosque"></i> Sholat Harian</button>
   </div>`;
-  const content = sub === 'murojaah' ? window.renderMurojaahForm() : window.renderSholatForm();
-  return tabsHTML + content;
+  return tabsHTML + (sub === 'murojaah' ? window.renderMurojaahForm() : window.renderSholatForm());
+};
+
+// ==== MULTI-SURAH PICKER HELPERS ====
+window.toggleSurahPicker = function() {
+  const dd = document.getElementById('surah-dropdown');
+  if (dd) dd.classList.toggle('hidden');
+};
+
+window.filterSurah = function(kw) {
+  const k = kw.toLowerCase();
+  document.querySelectorAll('.surah-opt').forEach(el => {
+    el.style.display = el.dataset.name.toLowerCase().includes(k) ? '' : 'none';
+  });
+};
+
+window.toggleSurah = function(surah, checked) {
+  if (checked) {
+    if (!state.selectedSurahs.includes(surah)) state.selectedSurahs.push(surah);
+  } else {
+    state.selectedSurahs = state.selectedSurahs.filter(s => s !== surah);
+  }
+  window.updateChipsUI();
+};
+
+window.removeSurah = function(s) {
+  state.selectedSurahs = state.selectedSurahs.filter(x => x !== s);
+  document.querySelectorAll('.surah-opt').forEach(el => {
+    if (el.dataset.name === s) {
+      const cb = el.querySelector('input[type="checkbox"]');
+      if (cb) cb.checked = false;
+    }
+  });
+  window.updateChipsUI();
+};
+
+window.updateChipsUI = function() {
+  const c = document.getElementById('surah-chips');
+  const cnt = document.getElementById('surah-count');
+  const lbl = document.getElementById('surah-picker-label');
+  if (!c) return;
+  c.innerHTML = state.selectedSurahs.map(s =>
+    `<span class="inline-flex items-center gap-1 bg-purple-100 text-purple-700 text-[10px] px-2 py-1 rounded-full">${s} <button type="button" onclick="window.removeSurah('${s.replace(/'/g, "\\'")}')" class="text-purple-900 font-bold leading-none">×</button></span>`
+  ).join('');
+  if (cnt) cnt.textContent = state.selectedSurahs.length + ' surah terpilih';
+  if (lbl) {
+    lbl.innerHTML = state.selectedSurahs.length
+      ? `<span class="text-purple-700 font-bold">${state.selectedSurahs.length} surah dipilih</span>`
+      : `<span class="text-gray-500">Pilih Surah...</span>`;
+  }
 };
 
 window.renderMurojaahForm = function() {
-  const surahOpt = DAFTAR_SURAH.map(s => `<option value="${s}">${s}</option>`).join('');
-  const riwayat = (state.murojaah || []).map(m => `<div class="bg-white p-3 rounded-xl shadow-sm border mb-2"><div class="flex justify-between items-start"><div><h4 class="font-bold text-xs">${m.juz_surah} ${m.ayat && m.ayat !== '-' ? '(' + m.ayat + ')' : ''}</h4><p class="text-[10px] text-gray-500">${new Date(m.tanggal).toLocaleDateString('id-ID')} • ${m.nama_wali || '-'}</p></div><span class="text-[10px] font-bold px-2 py-1 bg-purple-50 text-purple-700 rounded border border-purple-200">${m.kualitas}</span></div>${m.catatan && m.catatan !== '-' ? `<p class="text-[11px] italic text-gray-600 mt-2 border-t pt-1">"${m.catatan}"</p>` : ''}</div>`).join('');
+  const surahOpts = DAFTAR_SURAH.map(s => {
+    const checked = state.selectedSurahs.includes(s) ? 'checked' : '';
+    return `<label class="surah-opt flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer text-sm" data-name="${s}">
+      <input type="checkbox" ${checked} onchange="window.toggleSurah('${s.replace(/'/g, "\\'")}', this.checked)" class="w-4 h-4 text-purple-600">
+      <span>${s}</span>
+    </label>`;
+  }).join('');
+
+  const chips = state.selectedSurahs.map(s =>
+    `<span class="inline-flex items-center gap-1 bg-purple-100 text-purple-700 text-[10px] px-2 py-1 rounded-full">${s} <button type="button" onclick="window.removeSurah('${s.replace(/'/g, "\\'")}')" class="text-purple-900 font-bold leading-none">×</button></span>`
+  ).join('');
+
+  const riwayat = (state.murojaah || []).map(m => {
+    const tag = `<span class="bg-white border rounded px-2 py-1 text-[10px]">${m.juz_surah}</span>`;
+    return `<div class="bg-white p-3 rounded-xl shadow-sm border mb-2">
+      <div class="flex justify-between items-start gap-2">
+        <div class="flex-grow min-w-0">
+          <div class="flex flex-wrap gap-1 mb-1">${tag}</div>
+          ${m.ayat && m.ayat !== '-' ? `<p class="text-[10px] text-gray-500">Ayat: ${m.ayat}</p>` : ''}
+          <p class="text-[10px] text-gray-500">${new Date(m.tanggal).toLocaleDateString('id-ID')} • ${m.nama_wali || '-'}</p>
+        </div>
+        <span class="text-[10px] font-bold px-2 py-1 bg-purple-50 text-purple-700 rounded border border-purple-200 shrink-0">${m.kualitas}</span>
+      </div>
+      ${m.catatan && m.catatan !== '-' ? `<p class="text-[11px] italic text-gray-600 mt-2 border-t pt-1">"${m.catatan}"</p>` : ''}
+    </div>`;
+  }).join('');
+
+  const label = state.selectedSurahs.length
+    ? `<span class="text-purple-700 font-bold">${state.selectedSurahs.length} surah dipilih</span>`
+    : `<span class="text-gray-500">Pilih Surah...</span>`;
+
   return `
   <div class="bg-white rounded-2xl shadow-sm border p-5 mb-5">
     <h3 class="font-bold text-gray-800 mb-4 border-b pb-3"><i class="fas fa-book-open text-purple-600"></i> Input Muroja'ah Mandiri</h3>
     <form onsubmit="window.submitMurojaah(event)" class="space-y-3">
-      <div><label class="block text-xs font-bold text-gray-500 mb-1">Tanggal</label><input type="date" id="mur-tgl" class="w-full bg-gray-50 border rounded-xl p-3 text-sm" value="${new Date().toISOString().split('T')[0]}" required></div>
-      <div><label class="block text-xs font-bold text-gray-500 mb-1">Juz / Surah</label><select id="mur-surah" class="w-full bg-gray-50 border rounded-xl p-3 text-sm" required><option value="">Pilih Surah...</option>${surahOpt}</select></div>
-      <div><label class="block text-xs font-bold text-gray-500 mb-1">Ayat (opsional)</label><input type="text" id="mur-ayat" class="w-full bg-gray-50 border rounded-xl p-3 text-sm" placeholder="1-10"></div>
-      <div><label class="block text-xs font-bold text-gray-500 mb-1">Kualitas</label><select id="mur-kualitas" class="w-full bg-gray-50 border rounded-xl p-3 text-sm"><option value="Muntaz">Muntaz</option><option value="Jayyid" selected>Jayyid</option><option value="Maqbul">Maqbul</option><option value="Rasib">Rasib</option></select></div>
-      <div><label class="block text-xs font-bold text-gray-500 mb-1">Catatan (opsional)</label><textarea id="mur-catatan" rows="2" class="w-full bg-gray-50 border rounded-xl p-3 text-sm"></textarea></div>
+      <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1">Tanggal</label>
+        <input type="date" id="mur-tgl" class="w-full bg-gray-50 border rounded-xl p-3 text-sm" value="${new Date().toISOString().split('T')[0]}" required>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1">Surah yang Dimuroja'ah (bisa pilih banyak)</label>
+        <div id="surah-chips" class="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">${chips}</div>
+        <button type="button" onclick="window.toggleSurahPicker()" class="w-full text-left bg-gray-50 border rounded-xl p-3 text-sm flex justify-between items-center">
+          <span id="surah-picker-label">${label}</span>
+          <i class="fas fa-chevron-down text-gray-400"></i>
+        </button>
+        <div id="surah-dropdown" class="hidden mt-2 border rounded-xl bg-white shadow-lg overflow-hidden">
+          <div class="p-2 border-b">
+            <input type="text" onkeyup="window.filterSurah(this.value)" placeholder="🔍 Cari surah..." class="w-full bg-gray-50 border rounded-lg p-2 text-sm outline-none">
+          </div>
+          <div class="max-h-60 overflow-y-auto p-1">${surahOpts}</div>
+          <div class="p-2 border-t bg-gray-50 flex justify-between items-center">
+            <span id="surah-count" class="text-[10px] text-gray-500">${state.selectedSurahs.length} surah terpilih</span>
+            <button type="button" onclick="window.toggleSurahPicker()" class="text-xs font-bold bg-purple-600 text-white px-3 py-1.5 rounded-lg">Selesai</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1">Ayat (opsional)</label>
+        <input type="text" id="mur-ayat" class="w-full bg-gray-50 border rounded-xl p-3 text-sm" placeholder="Contoh: 1-10 (kosongkan jika semua)">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1">Kualitas</label>
+        <select id="mur-kualitas" class="w-full bg-gray-50 border rounded-xl p-3 text-sm">
+          <option value="Muntaz">Muntaz</option>
+          <option value="Jayyid" selected>Jayyid</option>
+          <option value="Maqbul">Maqbul</option>
+          <option value="Rasib">Rasib</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-500 mb-1">Catatan (opsional)</label>
+        <textarea id="mur-catatan" rows="2" class="w-full bg-gray-50 border rounded-xl p-3 text-sm"></textarea>
+      </div>
       <button type="submit" class="w-full bg-purple-600 text-white font-bold py-3.5 rounded-xl btn-active"><i class="fas fa-save"></i> Simpan Muroja'ah</button>
     </form>
   </div>
@@ -662,21 +791,39 @@ window.handleLogin = async function(e) {
   await new Promise(r => setTimeout(r, 100));
   const res = await window.apiCall('login', { username: u, password: p });
   if (res.success) {
-    state.user = res.user; state.activeTab = 'beranda'; state.activeTabOrtu = 'beranda';
-    window.renderApp(); window.loadDashboardData();
+    state.user = res.user;
+    try { localStorage.setItem('tahfidz_user', JSON.stringify(res.user)); } catch(e) {}
+    state.activeTab = 'beranda';
+    state.activeTabOrtu = 'beranda';
+    window.renderApp();
+    window.loadDashboardData();
   } else {
     if (btn) { btn.innerHTML = 'Masuk Sekarang'; btn.disabled = false; }
     if (errorDiv) { errorDiv.innerHTML = `<i class="fas fa-exclamation-circle mr-1"></i> ${res.message || 'Username/Password salah!'}`; errorDiv.classList.remove('hidden'); }
   }
 };
 
-window.handleLogout = function() { state.user = null; window.renderApp(); };
+window.handleLogout = function() {
+  try { localStorage.removeItem('tahfidz_user'); } catch(e) {}
+  state.user = null;
+  state.selectedSurahs = [];
+  window.renderApp();
+};
 
 window.loadDashboardData = async function() {
   state.isLoading = true; window.renderApp();
   const res = await window.apiCall(state.user.role === 'Ustadz' ? 'getDataUstadz' : 'getDataOrtu', state.user.role === 'Ustadz' ? {} : { id_santri: state.user.id_santri });
-  if (res.success) { state = { ...state, ...res }; state.isLoading = false; window.renderApp(); }
-  else { state.isLoading = false; window.renderApp(); }
+  if (res.success) {
+    state = { ...state, ...res };
+    state.isLoading = false;
+    if (res.pengaturan) {
+      try { localStorage.setItem('tahfidz_pengaturan', JSON.stringify(res.pengaturan)); } catch(e) {}
+    }
+    window.renderApp();
+  } else {
+    state.isLoading = false;
+    window.renderApp();
+  }
 };
 
 window.switchTab = function(t) { state.activeTab = t; state.riwayatFilter = state.riwayatFilter || 'setoran'; window.renderApp(); };
@@ -705,11 +852,14 @@ window.handleSubmitSetoran = async function(e) {
 
 window.submitMurojaah = async function(e) {
   e.preventDefault();
+  if (state.selectedSurahs.length === 0) {
+    return Swal.fire('Peringatan', "Pilih minimal 1 surah yang dimuroja'ah!", 'warning');
+  }
   const payload = {
     tanggal: document.getElementById('mur-tgl').value,
     id_santri: state.user.id_santri,
     nama_santri: state.santri_info?.nama_santri || state.user.nama_lengkap,
-    juz_surah: document.getElementById('mur-surah').value,
+    juz_surah: state.selectedSurahs.join(', '),
     ayat: document.getElementById('mur-ayat').value || '-',
     kualitas: document.getElementById('mur-kualitas').value,
     catatan: document.getElementById('mur-catatan').value || '-',
@@ -717,8 +867,11 @@ window.submitMurojaah = async function(e) {
   };
   Swal.fire({ title: 'Menyimpan...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
   const res = await window.apiCall('addMurojaah', payload);
-  if (res.success) { Swal.fire('Berhasil', res.message, 'success'); window.loadDashboardData(); }
-  else Swal.fire('Gagal', res.message, 'error');
+  if (res.success) {
+    state.selectedSurahs = [];
+    Swal.fire('Berhasil', res.message, 'success');
+    window.loadDashboardData();
+  } else Swal.fire('Gagal', res.message, 'error');
 };
 
 window.submitMutabaah = async function(e) {
@@ -796,7 +949,7 @@ window.handleSavePengaturan = async function(e) {
   Swal.fire({ title: 'Menyimpan...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
   await new Promise(r => setTimeout(r, 100));
   const res = await window.apiCall('savePengaturan', payload);
-  if (res.success) { Swal.fire('Berhasil', res.message, 'success'); state.pengaturan = payload; window.renderApp(); }
+  if (res.success) { Swal.fire('Berhasil', res.message, 'success'); state.pengaturan = payload; try { localStorage.setItem('tahfidz_pengaturan', JSON.stringify(payload)); } catch(e) {} window.renderApp(); }
 };
 
 window.handleAddSantriManual = async function(e) {
@@ -952,9 +1105,27 @@ window.generateSertifikat = function(e) {
 };
 
 // ==========================================
-// 10. INIT
+// 10. INIT — RESTORE SESSION
 // ==========================================
-document.addEventListener('DOMContentLoaded', window.renderApp);
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const savedPeng = localStorage.getItem('tahfidz_pengaturan');
+    if (savedPeng) state.pengaturan = JSON.parse(savedPeng);
+  } catch(e) {}
+
+  try {
+    const saved = localStorage.getItem('tahfidz_user');
+    if (saved) {
+      const u = JSON.parse(saved);
+      if (u && u.username && u.role) {
+        state.user = u;
+        window.loadDashboardData();
+        return;
+      }
+    }
+  } catch (e) { console.warn('Restore session gagal:', e); }
+  window.renderApp();
+});
 </script>
 </body>
 </html>
